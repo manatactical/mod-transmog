@@ -450,7 +450,8 @@ namespace
                 if (slot < 0)
                     continue;
 
-                bool classOk = !proto->AllowableClass || proto->AllowableClass == -1 || (proto->AllowableClass & classMask);
+                // AllowableClass is signed: 0 and -1 both mean every class
+                bool classOk = proto->AllowableClass <= 0 || (uint32(proto->AllowableClass) & classMask) != 0;
                 if (classOk && proto->Class == ITEM_CLASS_ARMOR && proto->InventoryType != INVTYPE_CLOAK && proto->SubClass == armorType)
                     wearable = true;
 
