@@ -19,6 +19,7 @@
  *   OS:<id>:<slot=entry,...>:<name>   save an outfit (charged like the gossip "save set")
  *   OU:<id>                    apply a saved outfit (free, it was paid for when saved)
  *   OD:<id>                    delete a saved outfit
+ *   OP                         buy one more outfit slot
  *
  * server -> client
  *   OPEN                                  the player talked to a transmogrifier: show the window
@@ -26,7 +27,8 @@
  *   E:<slot>,<equipped>,<fake>,<cost>;...  one entry per slot (equipped 0 = empty slot)
  *   L:<slot>:<page>:<total>:<id>,<id>,...
  *   R:<slot>:<code>                       result; code is a TransmogStrings id or one of the OUTFIT_* codes
- *   OB:<maxSets>                          start of an outfit list (the client clears its copy)
+ *   OB:<maxSets>:<slots>:<slotCost>       start of an outfit list (the client clears its copy); <slots> is how
+ *                                         many outfit slots the player owns, <slotCost> the price of the next
  *   O:<id>:<slot=entry,...>:<name>        one saved outfit
  *
  * Fields are only ever appended, never reordered, so an older addon keeps working against a newer server.
@@ -53,7 +55,7 @@ namespace
     constexpr char const* PREFIX_IN  = "TMOGC\t";
     constexpr char const* PREFIX_OUT = "TMOGS\t";
     constexpr size_t PREFIX_LEN = 6;
-    constexpr uint32 ITEMS_PER_PAGE = 25;
+    constexpr uint32 ITEMS_PER_PAGE = 20;
     constexpr size_t MAX_BODY = 240;
     constexpr size_t MAX_OUTFIT_NAME = 24;
 
@@ -68,6 +70,8 @@ namespace
         CODE_OUTFIT_DISABLED    = 106,
         CODE_OUTFIT_APPLIED     = 107,
         CODE_OUTFIT_DELETED     = 108,
+        CODE_OUTFIT_SLOT_BOUGHT = 109,
+        CODE_OUTFIT_SLOTS_MAXED = 110,
     };
 
     std::mutex g_lock;
@@ -438,9 +442,22 @@ namespace
         Send(player, ss.str());
     }
 
+    // Outfit slots: a few come free, the rest are bought one at a time, up to MaxSets.
+    uint32 OutfitSlotCount(Player* player)
+    {
+        uint32 free = sConfigMgr->GetOption<uint32>("Transmogrification.Window.FreeOutfitSlots", 2);
+        uint32 bought = player->GetPlayerSetting("mod-transmog", SETTING_OUTFIT_SLOTS_BOUGHT).value;
+        return std::min<uint32>(sT->GetMaxSets(), free + bought);
+    }
+
+    uint32 OutfitSlotCost()
+    {
+        return sConfigMgr->GetOption<uint32>("Transmogrification.Window.OutfitSlotCost", 2500000); // 250 gold
+    }
+
     void SendOutfits(Player* player)
     {
-        Send(player, "OB:" + std::to_string(uint32(sT->GetMaxSets())));
+        Send(player, "OB:" + std::to_string(uint32(sT->GetMaxSets())) + ":" + std::to_string(OutfitSlotCount(player)) + ":" + std::to_string(OutfitSlotCost()));
         if (!sT->GetEnableSets())
             return;
         std::vector<uint8> ids;
@@ -488,7 +505,7 @@ namespace
             SendResult(player, 255, CODE_NO_TRANSMOGRIFIER);
             return;
         }
-        if (id >= sT->GetMaxSets())
+        if (id >= OutfitSlotCount(player))
         {
             SendResult(player, 255, CODE_OUTFIT_FULL);
             return;
@@ -582,6 +599,38 @@ namespace
         SendState(player);
     }
 
+    void HandleOutfitSlotPurchase(Player* player)
+    {
+        if (!sT->GetEnableSets())
+        {
+            SendResult(player, 255, CODE_OUTFIT_DISABLED);
+            return;
+        }
+        if (!NearTransmogrifier(player))
+        {
+            SendResult(player, 255, CODE_NO_TRANSMOGRIFIER);
+            return;
+        }
+        if (OutfitSlotCount(player) >= sT->GetMaxSets())
+        {
+            SendResult(player, 255, CODE_OUTFIT_SLOTS_MAXED);
+            return;
+        }
+
+        uint32 cost = OutfitSlotCost();
+        if (!player->HasEnoughMoney(cost))
+        {
+            SendResult(player, 255, LANG_TRANSMOG_NOT_ENOUGH_MONEY);
+            return;
+        }
+
+        player->ModifyMoney(-int32(cost));
+        player->UpdatePlayerSetting("mod-transmog", SETTING_OUTFIT_SLOTS_BOUGHT,
+            player->GetPlayerSetting("mod-transmog", SETTING_OUTFIT_SLOTS_BOUGHT).value + 1);
+        SendResult(player, 255, CODE_OUTFIT_SLOT_BOUGHT);
+        SendOutfits(player);
+    }
+
     void HandleOutfitDelete(Player* player, uint32 id)
     {
         if (!sT->GetEnableSets() || id >= 255)
@@ -627,6 +676,8 @@ namespace
             SendOutfits(player);
         else if (cmd == "OS")
             HandleOutfitSave(player, body);
+        else if (cmd == "OP")
+            HandleOutfitSlotPurchase(player);
         else if (cmd == "OU" || cmd == "OD")
         {
             uint32 id = 0;

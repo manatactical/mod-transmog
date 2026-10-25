@@ -29,6 +29,15 @@
 #                     transmogrifier (or their transmog pet). Browsing and previewing work anywhere.
 #        Default:     1
 #
+#    Transmogrification.Window.FreeOutfitSlots
+#        Description: Outfit slots every player starts with in the transmog window. More are bought one at a time
+#                     up to Transmogrification.MaxSets.
+#        Default:     2
+#
+#    Transmogrification.Window.OutfitSlotCost
+#        Description: Price of one extra outfit slot, in copper.
+#        Default:     2500000 (250 gold)
+#
 #    Transmogrification.UseCollectionSystem
 #        Description: Enables/Disables Legion-style appearance collection system.
 #                     If enabled, players can use the appearance of any item equipped or rewarded from a completed quest.
@@ -99,6 +108,8 @@ Transmogrification.Enable = 1
 Transmogrification.ShowSetDisclaimer = 0
 Transmogrification.Window.OpenOnNpc = 1
 Transmogrification.Window.RequireNpc = 1
+Transmogrification.Window.FreeOutfitSlots = 2
+Transmogrification.Window.OutfitSlotCost = 2500000
 Transmogrification.UseCollectionSystem = 1
 Transmogrification.UseVendorInterface = 0
 Transmogrification.AllowHiddenTransmog = 1
