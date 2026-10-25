@@ -18,6 +18,17 @@
 #                     Players can suppress the notice per-character with: .transmog disclaimer off
 #        Default:     0
 #
+#    Transmogrification.Window.OpenOnNpc
+#        Description: Clients running the Manastorm_Transmog addon get the transmog window (3D preview, owned
+#                     appearances per slot, outfits) instead of the gossip menu when they talk to a transmogrifier.
+#                     Clients without the addon keep the gossip menu.
+#        Default:     1
+#
+#    Transmogrification.Window.RequireNpc
+#        Description: The window can only apply, remove or save while the player stands within 15 yards of a
+#                     transmogrifier (or their transmog pet). Browsing and previewing work anywhere.
+#        Default:     1
+#
 #    Transmogrification.UseCollectionSystem
 #        Description: Enables/Disables Legion-style appearance collection system.
 #                     If enabled, players can use the appearance of any item equipped or rewarded from a completed quest.
@@ -86,6 +97,8 @@
 
 Transmogrification.Enable = 1
 Transmogrification.ShowSetDisclaimer = 0
+Transmogrification.Window.OpenOnNpc = 1
+Transmogrification.Window.RequireNpc = 1
 Transmogrification.UseCollectionSystem = 1
 Transmogrification.UseVendorInterface = 0
 Transmogrification.AllowHiddenTransmog = 1

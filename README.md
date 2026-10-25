@@ -63,6 +63,14 @@ With a gm account goto the location you want to add the npc and use this command
 If you need to change the module configuration, go to your server configuration folder (e.g. **etc**), copy `transmog.conf.dist` to `transmog.conf` and edit it as you prefer.
 
 
+## Transmog window (Manastorm client)
+
+Clients running the `Manastorm_Transmog` addon get a window with a 3D preview of their character and the
+appearances their account owns for each slot, instead of the gossip menu (`/tmog` opens it too). The protocol
+and every command are documented at the top of `src/transmog_client.cpp`; the settings are
+`Transmogrification.Window.OpenOnNpc` and `Transmogrification.Window.RequireNpc` in `transmog.conf.dist`.
+Applying, removing and saving outfits still go through the module's own checks and prices.
+
 ## License
 
 This module is released under the [GNU AGPL license](https://github.com/azerothcore/mod-transmog/blob/master/LICENSE).

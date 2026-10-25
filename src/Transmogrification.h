@@ -370,4 +370,8 @@ public:
 };
 #define sTransmogrification Transmogrification::instance()
 
+// transmog_client.cpp: opens the in-game transmog window for a client that has the addon. Returns true when
+// it did, in which case the gossip menu must not be shown.
+bool TransmogClient_TryOpenWindow(Player* player);
+
 #endif

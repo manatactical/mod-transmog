@@ -201,6 +201,10 @@ public:
     {
         WorldSession* session = player->GetSession();
 
+        // A client with the transmog window gets it instead of the gossip menu.
+        if (TransmogClient_TryOpenWindow(player))
+            return true;
+
         // Clear the search string for the player
         sT->searchStringByPlayer.erase(player->GetGUID().GetCounter());
 
