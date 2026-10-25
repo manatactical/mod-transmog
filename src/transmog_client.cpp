@@ -20,6 +20,7 @@
  *   OS:<id>:<slot=entry,...>:<name>   save an outfit (charged like the gossip "save set")
  *   OU:<id>                    apply a saved outfit (free, it was paid for when saved)
  *   OD:<id>                    delete a saved outfit
+ *   OR:<id>:<name>             rename a saved outfit (free)
  *   OP                         buy one more outfit slot
  *
  * server -> client
@@ -78,6 +79,7 @@ namespace
         CODE_OUTFIT_DELETED     = 108,
         CODE_OUTFIT_SLOT_BOUGHT = 109,
         CODE_OUTFIT_SLOTS_MAXED = 110,
+        CODE_OUTFIT_RENAMED     = 111,
     };
 
     std::mutex g_lock;
@@ -815,6 +817,33 @@ namespace
         SendOutfits(player);
     }
 
+    void HandleOutfitRename(Player* player, std::string const& body)
+    {
+        // OR:<id>:<name>
+        std::vector<std::string> args = Split(body, ':', 3);
+        uint32 id = 0;
+        if (args.size() < 3 || !ParseUInt(args[1], id) || id >= 255 || !sT->GetEnableSets())
+            return;
+
+        auto& names = sT->presetByName[player->GetGUID()];
+        auto it = names.find(uint8(id));
+        if (it == names.end())
+            return;
+
+        std::string name = args[2];
+        if (!CleanOutfitName(name))
+        {
+            SendResult(player, 255, CODE_OUTFIT_BAD_NAME);
+            return;
+        }
+
+        it->second = name;
+        CharacterDatabase.Execute("UPDATE `custom_transmogrification_sets` SET `SetName` = \"{}\" WHERE `Owner` = {} AND `PresetID` = {}",
+            name, player->GetGUID().GetCounter(), id);
+        SendResult(player, 255, CODE_OUTFIT_RENAMED);
+        SendOutfits(player);
+    }
+
     void HandleOutfitDelete(Player* player, uint32 id)
     {
         if (!sT->GetEnableSets() || id >= 255)
@@ -864,6 +893,8 @@ namespace
             HandleOutfitSave(player, body);
         else if (cmd == "OP")
             HandleOutfitSlotPurchase(player);
+        else if (cmd == "OR")
+            HandleOutfitRename(player, body);
         else if (cmd == "OU" || cmd == "OD")
         {
             uint32 id = 0;
