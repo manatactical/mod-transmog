@@ -32,7 +32,6 @@ enum TransmogSettings
     SETTING_RETROACTIVE_CHECK         = 1,
     SETTING_VENDOR_INTERFACE          = 2,
     SETTING_HIDE_SET_DISCLAIMER       = 3,
-    SETTING_OUTFIT_SLOTS_BOUGHT       = 4, // extra outfit slots bought in the transmog window
 
     // Subscriptions
     SETTING_TRANSMOG_MEMBERSHIP_LEVEL = 0

@@ -47,6 +47,7 @@
 #include <mutex>
 #include <set>
 #include <sstream>
+#include <unordered_map>
 
 #define sT sTransmogrification
 
@@ -443,11 +444,40 @@ namespace
     }
 
     // Outfit slots: a few come free, the rest are bought one at a time, up to MaxSets.
+    // The slots a character has bought live in their own table, not in the core's player settings: those are
+    // only saved when EnablePlayerSettings is on, and it is off by default.
+    std::unordered_map<ObjectGuid::LowType, uint32>& OutfitSlotsCache()
+    {
+        static std::unordered_map<ObjectGuid::LowType, uint32> cache;
+        return cache;
+    }
+
+    uint32 OutfitSlotsBought(Player* player)
+    {
+        ObjectGuid::LowType guid = player->GetGUID().GetCounter();
+        auto& cache = OutfitSlotsCache();
+        auto it = cache.find(guid);
+        if (it != cache.end())
+            return it->second;
+
+        uint32 bought = 0;
+        if (QueryResult result = CharacterDatabase.Query("SELECT `Bought` FROM `custom_transmogrification_outfit_slots` WHERE `Owner` = {}", guid))
+            bought = (*result)[0].Get<uint32>();
+        cache[guid] = bought;
+        return bought;
+    }
+
+    void SetOutfitSlotsBought(Player* player, uint32 bought)
+    {
+        ObjectGuid::LowType guid = player->GetGUID().GetCounter();
+        CharacterDatabase.Execute("REPLACE INTO `custom_transmogrification_outfit_slots` (`Owner`, `Bought`) VALUES ({}, {})", guid, bought);
+        OutfitSlotsCache()[guid] = bought;
+    }
+
     uint32 OutfitSlotCount(Player* player)
     {
         uint32 free = sConfigMgr->GetOption<uint32>("Transmogrification.Window.FreeOutfitSlots", 2);
-        uint32 bought = player->GetPlayerSetting("mod-transmog", SETTING_OUTFIT_SLOTS_BOUGHT).value;
-        return std::min<uint32>(sT->GetMaxSets(), free + bought);
+        return std::min<uint32>(sT->GetMaxSets(), free + OutfitSlotsBought(player));
     }
 
     uint32 OutfitSlotCost()
@@ -625,8 +655,7 @@ namespace
         }
 
         player->ModifyMoney(-int32(cost));
-        player->UpdatePlayerSetting("mod-transmog", SETTING_OUTFIT_SLOTS_BOUGHT,
-            player->GetPlayerSetting("mod-transmog", SETTING_OUTFIT_SLOTS_BOUGHT).value + 1);
+        SetOutfitSlotsBought(player, OutfitSlotsBought(player) + 1);
         SendResult(player, 255, CODE_OUTFIT_SLOT_BOUGHT);
         SendOutfits(player);
     }
