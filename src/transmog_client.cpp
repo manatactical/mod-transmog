@@ -13,6 +13,7 @@
  *   HI                         the addon is loaded; answers with I: and an E: dump
  *   ST                         resend the E: dump
  *   L:<slot>:<page>:<search>   one page of the appearances the account owns that fit the slot
+ *   SL:<nonce>:<first>:<count>:<search>   a range of the item sets this class can wear, most complete first
  *   A:<slot>:<entry>           transmogrify a slot; entry 0 removes it, 1 (HIDDEN_ITEM_ID) hides it
  *   XA                         remove every transmogrification
  *   OL                         list the saved outfits
@@ -26,6 +27,9 @@
  *   I:<hidden>,<sets>,<maxSets>,<setMod%>,<setCopper>,<token>,<tokenEntry>,<tokenAmount>,<hiddenFree>
  *   E:<slot>,<equipped>,<fake>,<cost>;...  one entry per slot (equipped 0 = empty slot)
  *   L:<slot>:<page>:<total>:<id>,<id>,...
+ *   SB:<nonce>:<total>                    how many sets match the SL: search
+ *   T:<nonce>:<index>:<id>|<owned>|<total>|<name>|<slot=entry,slot/entry,...>   one set; '=' marks a piece the
+ *                                         account owns, '/' one it does not
  *   R:<slot>:<code>                       result; code is a TransmogStrings id or one of the OUTFIT_* codes
  *   OB:<maxSets>:<slots>:<slotCost>       start of an outfit list (the client clears its copy); <slots> is how
  *                                         many outfit slots the player owns, <slotCost> the price of the next
@@ -38,6 +42,7 @@
 #include "Chat.h"
 #include "ObjectMgr.h"
 #include "ItemTemplate.h"
+#include "DBCStores.h"
 #include "DatabaseEnv.h"
 #include "WorldPacket.h"
 #include "ScriptMgr.h"
@@ -348,6 +353,155 @@ namespace
             ss << list[i]->ItemId;
         }
         Send(player, ss.str());
+    }
+
+    // The equipment slot a set piece goes in, or -1 for what cannot be transmogrified (rings, trinkets, neck).
+    int32 PieceSlot(ItemTemplate const* proto)
+    {
+        switch (proto->InventoryType)
+        {
+            case INVTYPE_HEAD:            return EQUIPMENT_SLOT_HEAD;
+            case INVTYPE_SHOULDERS:       return EQUIPMENT_SLOT_SHOULDERS;
+            case INVTYPE_BODY:            return EQUIPMENT_SLOT_BODY;
+            case INVTYPE_CHEST:
+            case INVTYPE_ROBE:            return EQUIPMENT_SLOT_CHEST;
+            case INVTYPE_WAIST:           return EQUIPMENT_SLOT_WAIST;
+            case INVTYPE_LEGS:            return EQUIPMENT_SLOT_LEGS;
+            case INVTYPE_FEET:            return EQUIPMENT_SLOT_FEET;
+            case INVTYPE_WRISTS:          return EQUIPMENT_SLOT_WRISTS;
+            case INVTYPE_HANDS:           return EQUIPMENT_SLOT_HANDS;
+            case INVTYPE_CLOAK:           return EQUIPMENT_SLOT_BACK;
+            case INVTYPE_WEAPON:
+            case INVTYPE_2HWEAPON:
+            case INVTYPE_WEAPONMAINHAND:  return EQUIPMENT_SLOT_MAINHAND;
+            case INVTYPE_SHIELD:
+            case INVTYPE_HOLDABLE:
+            case INVTYPE_WEAPONOFFHAND:   return EQUIPMENT_SLOT_OFFHAND;
+            case INVTYPE_RANGED:
+            case INVTYPE_THROWN:
+            case INVTYPE_RANGEDRIGHT:     return EQUIPMENT_SLOT_RANGED;
+            default:                      return -1;
+        }
+    }
+
+    // The armor type the class wears (cloth 1, leather 2, mail 3, plate 4): transmog only swaps like for like.
+    uint32 ArmorTypeOf(Player* player)
+    {
+        switch (player->getClass())
+        {
+            case CLASS_WARRIOR:
+            case CLASS_PALADIN:
+            case CLASS_DEATH_KNIGHT: return ITEM_SUBCLASS_ARMOR_PLATE;
+            case CLASS_HUNTER:
+            case CLASS_SHAMAN:       return ITEM_SUBCLASS_ARMOR_MAIL;
+            case CLASS_ROGUE:
+            case CLASS_DRUID:        return ITEM_SUBCLASS_ARMOR_LEATHER;
+            default:                 return ITEM_SUBCLASS_ARMOR_CLOTH;
+        }
+    }
+
+    struct SetRow
+    {
+        uint32 id = 0;
+        uint32 owned = 0;
+        uint32 total = 0;
+        std::string name;
+        std::string pieces; // slot=entry for a piece the account owns, slot/entry for one it does not
+    };
+
+    std::string CleanText(char const* text, size_t cap)
+    {
+        std::string out;
+        for (; text && *text && out.size() < cap; ++text)
+            out.push_back((*text == ':' || *text == ',' || *text == '|' || *text == ';' || *text == '=' || *text == '/') ? ' ' : *text);
+        return out;
+    }
+
+    // Every item set that holds something this class can wear, with how many of its pieces the account owns,
+    // most complete first.
+    void BuildSets(Player* player, std::string const& search, std::vector<SetRow>& out)
+    {
+        std::string needle = LowerCopy(search);
+        uint32 armorType = ArmorTypeOf(player);
+        uint32 classMask = player->getClassMask();
+        LocaleConstant loc = player->GetSession()->GetSessionDbcLocale();
+
+        for (uint32 i = 0; i < sItemSetStore.GetNumRows(); ++i)
+        {
+            ItemSetEntry const* set = sItemSetStore.LookupEntry(i);
+            if (!set)
+                continue;
+
+            SetRow row;
+            row.id = i; // the DBC keys a set by its row
+            char const* name = set->name[loc];
+            if (!name || !*name)
+                name = set->name[LOCALE_enUS];
+            row.name = CleanText(name, 40);
+
+            bool wearable = false;
+            for (uint32 n = 0; n < MAX_ITEM_SET_ITEMS; ++n)
+            {
+                uint32 entry = set->itemId[n];
+                if (!entry)
+                    continue;
+                ItemTemplate const* proto = sObjectMgr->GetItemTemplate(entry);
+                int32 slot = proto ? PieceSlot(proto) : -1;
+                if (slot < 0)
+                    continue;
+
+                bool classOk = !proto->AllowableClass || proto->AllowableClass == -1 || (proto->AllowableClass & classMask);
+                if (classOk && proto->Class == ITEM_CLASS_ARMOR && proto->InventoryType != INVTYPE_CLOAK && proto->SubClass == armorType)
+                    wearable = true;
+
+                bool owned = OwnsAppearance(player, entry);
+                ++row.total;
+                if (owned)
+                    ++row.owned;
+                if (!row.pieces.empty())
+                    row.pieces += ',';
+                row.pieces += std::to_string(slot) + (owned ? '=' : '/') + std::to_string(entry);
+            }
+
+            if (!wearable || row.name.empty() || (!needle.empty() && LowerCopy(row.name).find(needle) == std::string::npos))
+                continue;
+            out.push_back(std::move(row));
+        }
+
+        std::sort(out.begin(), out.end(), [](SetRow const& a, SetRow const& b)
+        {
+            if (a.owned != b.owned)
+                return a.owned > b.owned;
+            if (a.name != b.name)
+                return a.name < b.name;
+            return a.id < b.id;
+        });
+    }
+
+    // SL:<nonce>:<first>:<count>:<search>  ->  SB:<nonce>:<total>, then one T: per set in the range
+    void HandleSetList(Player* player, std::string const& body)
+    {
+        std::vector<std::string> args = Split(body, ':', 5);
+        uint32 nonce = 0, first = 0, count = 0;
+        if (args.size() < 4 || !ParseUInt(args[1], nonce) || !ParseUInt(args[2], first) || !ParseUInt(args[3], count))
+            return;
+        count = std::min<uint32>(count, 24);
+
+        std::string search = args.size() > 4 ? args[4] : "";
+        if (search.size() > MAX_SEARCH_STRING_LENGTH)
+            search.resize(MAX_SEARCH_STRING_LENGTH);
+
+        std::vector<SetRow> sets;
+        BuildSets(player, search, sets);
+
+        Send(player, "SB:" + std::to_string(nonce) + ":" + std::to_string(sets.size()));
+        for (size_t i = first; i < sets.size() && i < size_t(first) + count; ++i)
+        {
+            SetRow const& s = sets[i];
+            std::ostringstream ss;
+            ss << "T:" << nonce << ':' << i << ':' << s.id << '|' << s.owned << '|' << s.total << '|' << s.name << '|' << s.pieces;
+            Send(player, ss.str());
+        }
     }
 
     void HandleApply(Player* player, std::vector<std::string> const& args)
@@ -696,6 +850,8 @@ namespace
             SendState(player);
         else if (cmd == "L")
             HandleList(player, args);
+        else if (cmd == "SL")
+            HandleSetList(player, body);
         else if (cmd == "A")
             HandleApply(player, args);
         else if (cmd == "XA")
