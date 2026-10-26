@@ -357,6 +357,31 @@ namespace
         Send(player, ss.str());
     }
 
+    // Debug: tells the player in chat why an owned appearance is missing from the list for `slot`.
+    void HandleWhy(Player* player, std::vector<std::string> const& args)
+    {
+        uint32 slot = 0, entry = 0;
+        if (args.size() < 3 || !ParseUInt(args[1], slot) || !ParseUInt(args[2], entry) || !IsWindowSlot(slot))
+            return;
+
+        ChatHandler chat(player->GetSession());
+        ItemTemplate const* proto = sObjectMgr->GetItemTemplate(entry);
+        Item* target = player->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
+        if (!proto)
+            return chat.PSendSysMessage("why {}: no such item", entry);
+        if (!target)
+            return chat.PSendSysMessage("why {}: nothing is equipped in slot {}", entry, slot);
+
+        ItemTemplate const* t = target->GetTemplate();
+        chat.PSendSysMessage("why {}: owned={} suitable={} (class mask {}, race mask {}, level {}, quality {}) same item={} same display={} "
+            "class {}/{} subclass {}/{} invtype {}/{} -> allowed={}",
+            entry, OwnsAppearance(player, entry), sT->SuitableForTransmogrification(player, proto),
+            proto->AllowableClass, proto->AllowableRace, proto->RequiredLevel, proto->Quality,
+            entry == t->ItemId, proto->DisplayInfoID == t->DisplayInfoID,
+            proto->Class, t->Class, proto->SubClass, t->SubClass, proto->InventoryType, t->InventoryType,
+            sT->CanTransmogrifyItemWithItem(player, t, proto));
+    }
+
     // The equipment slot a set piece goes in, or -1 for what cannot be transmogrified (rings, trinkets, neck).
     int32 PieceSlot(ItemTemplate const* proto)
     {
@@ -882,6 +907,8 @@ namespace
             HandleList(player, args);
         else if (cmd == "SL")
             HandleSetList(player, body);
+        else if (cmd == "Y")
+            HandleWhy(player, args);
         else if (cmd == "A")
             HandleApply(player, args);
         else if (cmd == "XA")
