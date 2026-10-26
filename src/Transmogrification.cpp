@@ -740,6 +740,9 @@ bool Transmogrification::IsSubclassMismatchAllowed(Player *player, const ItemTem
     {
         if (AllowMixedArmorTypes)
             return true;
+        // A misc armor has no tier of its own: take any tier the player's skills allow (source is checked by SuitableForTransmogrification)
+        if (targetSub == ITEM_SUBCLASS_ARMOR_MISC && IsTieredArmorSubclass(sourceSub))
+            return true;
         if (AllowLowerTiers && IsTieredArmorSubclass(targetSub) && TierAvailable(player, 0, sourceSub))
             return true;
         if (AllowMixedOffhandArmorTypes && IsValidOffhandArmor(targetSub, targetType) && IsValidOffhandArmor(sourceSub, sourceType))
