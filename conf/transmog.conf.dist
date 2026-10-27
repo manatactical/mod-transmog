@@ -270,7 +270,7 @@ Transmogrification.AllowHeirloom = 1
 Transmogrification.AllowTradeable = 0
 
 Transmogrification.AllowMixedArmorTypes = 0
-Transmogrification.AllowLowerTiers = 0
+Transmogrification.AllowLowerTiers = 1
 Transmogrification.AllowMixedOffhandArmorTypes = 0
 Transmogrification.AllowMixedWeaponTypes = 0
 Transmogrification.AllowMixedWeaponHandedness = 0
