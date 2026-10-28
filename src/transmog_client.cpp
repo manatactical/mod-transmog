@@ -582,6 +582,23 @@ namespace
         SendSlot(player, uint8(slot));
     }
 
+    // One message per Apply Outfit: "AB:slot:entry,..." runs each pair through HandleApply, so the client sends once.
+    void HandleApplyBatch(Player* player, std::string const& body)
+    {
+        if (body.size() <= 3)
+            return;
+
+        for (std::string const& pair : Split(body.substr(3), ','))
+        {
+            std::vector<std::string> kv = Split(pair, ':');
+            if (kv.size() != 2)
+                continue;
+
+            std::vector<std::string> one = { "A", kv[0], kv[1] };
+            HandleApply(player, one);
+        }
+    }
+
     void HandleRemoveAll(Player* player)
     {
         if (!NearTransmogrifier(player))
@@ -911,6 +928,8 @@ namespace
             HandleWhy(player, args);
         else if (cmd == "A")
             HandleApply(player, args);
+        else if (cmd == "AB")
+            HandleApplyBatch(player, body);
         else if (cmd == "XA")
             HandleRemoveAll(player);
 #ifdef PRESETS
